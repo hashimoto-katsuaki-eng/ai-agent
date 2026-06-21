@@ -23,6 +23,7 @@ set -u
 
 LINEAR_TEAM_ID="0c81db18-a9dd-41bb-ab79-9d0819136cfe"
 LINEAR_AUTO_FILED_LABEL_ID="80cc1631-1683-45d8-85bb-d458672ee673"
+LINEAR_DEVIN_DELEGATE_ID="deb4eeda-0653-4d0e-8f39-4f96a1c3c643"
 LINEAR_API_URL="https://api.linear.app/graphql"
 
 POLL_INTERVAL_SECONDS="${POLL_INTERVAL_SECONDS:-18000}"
@@ -81,16 +82,20 @@ is_duplicate() {
 }
 
 create_linear_issue() {
-  # $1 = title, $2 = description
-  local payload response success identifier url
+  # $1 = title, $2 = description, $3 = source (github|hn)
+  local payload response success identifier url delegate_id=""
+  if [ "${3:-}" = "github" ]; then
+    delegate_id="$LINEAR_DEVIN_DELEGATE_ID"
+  fi
   payload=$(jq -n \
     --arg teamId "$LINEAR_TEAM_ID" \
     --arg labelId "$LINEAR_AUTO_FILED_LABEL_ID" \
     --arg title "$1" \
     --arg description "$2" \
+    --arg delegateId "$delegate_id" \
     '{
       query: "mutation IssueCreate($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { identifier url } } }",
-      variables: { input: { teamId: $teamId, title: $title, description: $description, labelIds: [$labelId] } }
+      variables: { input: ({ teamId: $teamId, title: $title, description: $description, labelIds: [$labelId] } + (if $delegateId != "" then { delegateId: $delegateId } else {} end)) }
     }')
   response=$(linear_api "$payload")
   success=$(echo "$response" | jq -r '.data.issueCreate.success // false')
@@ -147,7 +152,7 @@ build_description() {
   local source="$1" url="$2"
   case "$source" in
     github)
-      printf 'GitHub上で、AI/LLMエージェント開発ツール関連で注目度の高いリポジトリを検知しました。\n\n- URL: %s\n\nこのissueはルールベースの非LLMスクリプト(trend-watcher/trend-watcher-daemon.sh)が、star数としきい値だけで自動起票したものです。要約や注目理由の評価は行っていません。\n\n次のアクション(読む・着手する・Devinに委任する)は人間が判断してください。' "$url"
+      printf 'GitHub上で、AI/LLMエージェント開発ツール関連で注目度の高いリポジトリを検知しました。\n\n- URL: %s\n\nこのissueはルールベースの非LLMスクリプト(trend-watcher/trend-watcher-daemon.sh)が、star数としきい値だけで自動起票したものです。要約や注目理由の評価は行っていません。\n\n## Devinへの依頼\n\nこのリポジトリは未知の第三者コードです。信頼できないコードとして扱い、本リポジトリの認証情報やシークレットを使わず、通常の隔離されたセッション内でのみ検証してください。\n\n1. リポジトリをクローンし、セキュリティ上の懸念点(悪意のあるコード、不審なインストール/ビルドスクリプト、難読化されたコード、サプライチェーンリスク、star数の急増が不自然でないか等)を確認する\n2. リポジトリの内容を解析し、何をするものか、AI/LLMエージェント関連ツールとしての位置づけ・注目に値する理由(または値しない理由)を整理する\n3. 結果を `trend-watcher/reports/<リポジトリ名のスラッグ>.md` としてこのリポジトリ(ai-agent)に追加し、PRを作成する\n\n判断に迷う場合はissueにコメントしてください。' "$url"
       ;;
     hn)
       printf 'Hacker Newsで、AI/LLMエージェント開発ツール関連で注目度の高い記事を検知しました。\n\n- URL: %s\n\nこのissueはルールベースの非LLMスクリプト(trend-watcher/trend-watcher-daemon.sh)が、ポイント数としきい値だけで自動起票したものです。要約や注目理由の評価は行っていません。\n\n次のアクション(読む・着手する・Devinに委任する)は人間が判断してください。' "$url"
@@ -179,7 +184,7 @@ run_once() {
       log "skip (duplicate): ${display}"
       continue
     fi
-    if create_linear_issue "[自動調査] ${display}" "$(build_description "$source" "$url")"; then
+    if create_linear_issue "[自動調査] ${display}" "$(build_description "$source" "$url")" "$source"; then
       filed=$((filed + 1))
       printf '%s\n' "$(printf '%s' "$match_key" | tr '[:upper:]' '[:lower:]')" >> "$RECENT_TITLES_FILE"
     fi
