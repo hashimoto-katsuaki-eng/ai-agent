@@ -1,0 +1,52 @@
+{
+  "skipDangerousModePermissionPrompt": true,
+  "permissions": {
+    "deny": [
+      "Read(/workspaces/devcon/claude-limit-watcher/.env.local)",
+      "Bash(cat /workspaces/devcon/claude-limit-watcher/.env.local)",
+      "Bash(cat .env.local)",
+      "Bash(less /workspaces/devcon/claude-limit-watcher/.env.local)",
+      "Bash(less .env.local)",
+      "Bash(more /workspaces/devcon/claude-limit-watcher/.env.local)",
+      "Bash(more .env.local)",
+      "Bash(head /workspaces/devcon/claude-limit-watcher/.env.local)",
+      "Bash(head .env.local)",
+      "Bash(tail /workspaces/devcon/claude-limit-watcher/.env.local)",
+      "Bash(tail .env.local)"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "mcp__linear__save_issue",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sid=$(jq -r '.session_id' | tr -cd 'a-zA-Z0-9_-'); mkdir -p /tmp/claude-linear-gate; [ -n \"$sid\" ] && touch \"/tmp/claude-linear-gate/$sid\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sid=$(jq -r '.session_id' | tr -cd 'a-zA-Z0-9_-'); [ -f \"/tmp/claude-linear-gate/$sid\" ] && exit 0; jq -n '{hookSpecificOutput:{hookEventName:\"PreToolUse\",permissionDecision:\"deny\",permissionDecisionReason:\"先にLinearにissueを起票してください(title=タスク名、description=完了条件/Definition of Doneのみで可)。mcp__linear__save_issue (team=\\\"Ai-agents-Teams\\\") で作成後に再実行してください。\"}}'"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Bash|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/workspaces/devcon/.claude/hooks/protect-env.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

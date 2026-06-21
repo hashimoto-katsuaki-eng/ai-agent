@@ -1,0 +1,9 @@
+{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "mounts": [
+    "source=claude-code-config,target=/home/vscode/.claude,type=volume",
+    "source=devin-cli-data,target=/home/vscode/.local/share/devin,type=volume",
+    "source=devin-cli-config,target=/home/vscode/.config/devin,type=volume"
+  ],
+  "postCreateCommand": "sudo mkdir -p ~/.claude ~/.local/share/devin ~/.config/devin && sudo chown -R $(id -u):$(id -g) ~/.claude ~/.local/share/devin ~/.config/devin && curl -fsSL https://claude.ai/install.sh | bash && curl -fsSL https://cli.devin.ai/install.sh | bash"
+}
