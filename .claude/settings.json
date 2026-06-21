@@ -12,7 +12,13 @@
       "Bash(head /workspaces/devcon/claude-limit-watcher/.env.local)",
       "Bash(head .env.local)",
       "Bash(tail /workspaces/devcon/claude-limit-watcher/.env.local)",
-      "Bash(tail .env.local)"
+      "Bash(tail .env.local)",
+      "Read(/workspaces/devcon/trend-watcher/.env.local)",
+      "Bash(cat /workspaces/devcon/trend-watcher/.env.local)",
+      "Bash(less /workspaces/devcon/trend-watcher/.env.local)",
+      "Bash(more /workspaces/devcon/trend-watcher/.env.local)",
+      "Bash(head /workspaces/devcon/trend-watcher/.env.local)",
+      "Bash(tail /workspaces/devcon/trend-watcher/.env.local)"
     ],
     "defaultMode": "bypassPermissions"
   },
