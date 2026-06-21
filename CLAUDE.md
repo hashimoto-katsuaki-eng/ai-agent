@@ -10,6 +10,7 @@
 
 - 通常は会話で直接指示されたタスクに取り組む。
 - 「何かやることある?」のように明示的に聞かれた場合は、`mcp__linear__list_issues`(team=`Ai-agents-Teams`)で未着手バックログを確認し、Devin にすでに delegate 済みの issue は避けて拾う。
+- さらに、claude.ai のクラウドルーティン「`linearバックログ定期チェック`」(`trig_011EvNz9DiaBrnmbQLUStefC`, AI-14)が5時間おきに自動でバックログを確認し、候補を提示する。モデルは `claude-haiku-4-5`、`allowed_tools` は `Read/Glob/Grep` のみで、issueの更新やコード変更は一切行わない(提示のみ)。実際の着手判断は人間が行う。結果は claude.ai のルーティンページで確認する。
 
 ## 無人実行・監視の使い分け
 
