@@ -12,6 +12,16 @@
 - 「何かやることある?」のように明示的に聞かれた場合は、`mcp__linear__list_issues`(team=`Ai-agents-Teams`)で未着手バックログを確認し、Devin にすでに delegate 済みの issue は避けて拾う。
 - さらに、claude.ai のクラウドルーティン「`linearバックログ定期チェック`」(`trig_011EvNz9DiaBrnmbQLUStefC`, AI-14)が5時間おきに自動でバックログを確認し、候補を提示する。モデルは `claude-haiku-4-5`、`allowed_tools` は `Read/Glob/Grep` のみで、issueの更新やコード変更は一切行わない(提示のみ)。実際の着手判断は人間が行う。結果は claude.ai のルーティンページで確認する。
 
+## 自動issue起票ツール: trend-watcher
+
+- `trend-watcher/trend-watcher-daemon.sh`(AI-15)が、GitHub Search API と Hacker News(Algolia)Search APIをポーリングし、AI/LLMエージェント開発ツール関連で閾値(star数/ポイント数+作成・投稿の新しさ)を超えた項目を `Ai-agents-Teams` に自動起票する。
+- **LLM/Claudeトークンは一切使わない**: 取得・閾値判定・重複チェック・issue作成まですべてbash+curl+jqのルールベース処理。`claude-limit-watcher/claude-limit-daemon.sh` と同じ構成(daemonループ、`--once`で単発実行)。
+- **本番運用は GitHub Actions**(`.github/workflows/trend-watcher.yml`、5時間おき)。PC本体やdevcontainerの起動状態に依存しない。devcontainer内での常駐起動(README参照)はデバッグ用で、PCがスリープすると一緒に止まる。
+- 起票前にLinear GraphQL APIで直近30日分のissueタイトルと重複しないか確認してからissueを作る(1回の実行で最大3件、ノイズ防止)。
+- 自動起票されたissueには label `auto-filed` が付き、delegateは未設定。Devinへの委任を行うかどうかは人間が判断する。
+- 必須環境変数 `LINEAR_API_KEY` は本番ではGitHub Actionsのrepository secretに置く。ローカル実行時のみ `trend-watcher/.env.local`(gitignore済み、Claude自身からの読み取りも `.claude/hooks/protect-env.sh` で禁止)を使う。
+- 何かを定期的に調べて判断するだけの作業は、LLMで毎回賄うのではなく、まずこの形(非LLMスクリプト)で解決できないかを優先する。
+
 ## 無人実行・監視の使い分け
 
 - **非LLMの常駐スクリプト**: 単純な閾値ポーリングや通知(例: `claude-limit-watcher/claude-limit-daemon.sh`)はこの形のままにする。判断不要・コストをかけたくないものはここに置く。

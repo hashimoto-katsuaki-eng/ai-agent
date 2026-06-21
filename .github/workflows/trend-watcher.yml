@@ -1,0 +1,18 @@
+name: trend-watcher
+
+on:
+  schedule:
+    - cron: "23 */5 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run trend-watcher
+        working-directory: trend-watcher
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./trend-watcher-daemon.sh --once
