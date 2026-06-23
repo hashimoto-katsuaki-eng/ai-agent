@@ -4,7 +4,11 @@
 
 ## Linear-gate フック
 
-`.claude/settings.json` の PreToolUse フックにより、**このセッションで `mcp__linear__save_issue`(team=`Ai-agents-Teams`)で issue を起票するまで Write/Edit/NotebookEdit はすべて拒否される**。title=タスク名、description=完了条件(Definition of Done)のみで起票してよい。最初のファイル変更の前に必ず起票すること。
+ユーザー単位の `~/.claude/settings.json`(`linear-gate-check.sh` / `linear-gate-mark.sh`)の PreToolUse/PostToolUse フックにより、**このセッションで `mcp__linear__save_issue`(team=`Ai-agents-Teams`)で issue を起票するまで Write/Edit/NotebookEdit はすべて拒否される**。title=タスク名、description=完了条件(Definition of Done)のみで起票してよい。最初のファイル変更の前に必ず起票すること。
+
+このフックは devcon リポジトリ固有ではなく、`/workspaces` 配下のどのディレクトリで作業していても同様に適用される(team は常に `Ai-agents-Teams` 固定)。devcon の `.claude/settings.json` には `.env.local` 保護用の `protect-env.sh` フックのみが残っている。
+
+**注意**: `~/.claude`(設定本体)は `.devcontainer/devcontainer.json` で named volume(`claude-code-config`)としてマウントされており、**このDockerホストにローカル**(GitHubには含まれない)。別デバイスでこのリポジトリを開いた場合に同じフックを再現できるよう、フック本体は `.devcontainer/claude-global/`(`hooks/*.sh` + `install.sh`)としてリポジトリにコミットしてあり、`postCreateCommand` がコンテナ作成時に `~/.claude` へ冪等にインストールする。フックの内容を変更する場合は `~/.claude/hooks/*.sh` を直接編集するのではなく `.devcontainer/claude-global/hooks/*.sh` を直して `install.sh` を再実行すること(でないと他デバイスに伝わらない)。
 
 ## タスクの拾い方
 
