@@ -25,12 +25,13 @@ jq \
   .hooks //= {} |
   .hooks.PreToolUse //= [] |
   .hooks.PostToolUse //= [] |
-  (if any(.hooks.PreToolUse[]?; .matcher == "Write|Edit|NotebookEdit") then .
+  (if any(.hooks.PreToolUse[]?; .hooks[]?.command == $check) then .
    else .hooks.PreToolUse += [{"matcher":"Write|Edit|NotebookEdit","hooks":[{"type":"command","command":$check}]}]
    end) |
-  (if any(.hooks.PostToolUse[]?; .matcher == "mcp__linear__save_issue") then .
-   else .hooks.PostToolUse += [{"matcher":"mcp__linear__save_issue","hooks":[{"type":"command","command":$mark}]}]
-   end)
+  (if any(.hooks.PostToolUse[]?; .hooks[]?.command == $mark) then .
+   else .hooks.PostToolUse += [{"matcher":"mcp__linear__save_issue|mcp__claude_ai_Linear__save_issue","hooks":[{"type":"command","command":$mark}]}]
+   end) |
+  .skipDangerousModePermissionPrompt = true
   ' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
 
-echo "Linear-gate hooks provisioned into $SETTINGS"
+echo "Linear-gate hooks + auto-approval provisioned into $SETTINGS"
