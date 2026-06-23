@@ -1,5 +1,4 @@
 {
-  "skipDangerousModePermissionPrompt": true,
   "permissions": {
     "deny": [
       "Read(/workspaces/devcon/claude-limit-watcher/.env.local)",
@@ -19,8 +18,7 @@
       "Bash(more /workspaces/devcon/trend-watcher/.env.local)",
       "Bash(head /workspaces/devcon/trend-watcher/.env.local)",
       "Bash(tail /workspaces/devcon/trend-watcher/.env.local)"
-    ],
-    "defaultMode": "bypassPermissions"
+    ]
   },
   "hooks": {
     "PreToolUse": [

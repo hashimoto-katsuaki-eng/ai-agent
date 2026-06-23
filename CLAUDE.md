@@ -10,6 +10,14 @@
 
 **注意**: `~/.claude`(設定本体)は `.devcontainer/devcontainer.json` で named volume(`claude-code-config`)としてマウントされており、**このDockerホストにローカル**(GitHubには含まれない)。別デバイスでこのリポジトリを開いた場合に同じフックを再現できるよう、フック本体は `.devcontainer/claude-global/`(`hooks/*.sh` + `install.sh`)としてリポジトリにコミットしてあり、`postCreateCommand` がコンテナ作成時に `~/.claude` へ冪等にインストールする。フックの内容を変更する場合は `~/.claude/hooks/*.sh` を直接編集するのではなく `.devcontainer/claude-global/hooks/*.sh` を直して `install.sh` を再実行すること(でないと他デバイスに伝わらない)。
 
+## コマンド承認不要化(bypassPermissions)と bash-guard フック
+
+ツール呼び出しの個別承認プロンプトは `~/.claude/settings.json` の `permissions.defaultMode = "bypassPermissions"`(user-wide、`install.sh` がprovisioning)でスキップされる。**これはdevconに限らず `/workspaces` 配下の全プロジェクトに適用される**ため、project側の `.claude/settings.json` で同じ設定を重複させない(project側にはそのプロジェクト固有のdeny listやフックのみを残す)。
+
+承認なしでコマンドが流れることに対する安全網として、`bash-guard.sh`(PreToolUse、matcher=`Bash`)がdeterministic・rule-basedにdenyする: シークレットらしき文字列、`git push --force`/`git reset --hard`/`git clean -f`/`git branch -D`などの不可逆git操作、root・システムディレクトリ・home等の広範囲な `rm -rf`、registryを介さないURL/git直接installのnpm/pip。モデルの判断に依存しない固定ルールなので、bypassPermissionsをglobal化する際は必ずこのフックも一緒にuser-wideへ同期すること(片方だけ反映するとガードレールなしで承認不要化されるホストが生まれる)。
+
+bash-guard.sh本体も `.devcontainer/claude-global/hooks/bash-guard.sh` としてリポジトリにコミット済みで、linear-gateフックと同様に `install.sh` 経由で配布される。ルールを変更する場合もリポジトリ側を直してから `install.sh` を再実行する。
+
 ## タスクの拾い方
 
 - 通常は会話で直接指示されたタスクに取り組む。
