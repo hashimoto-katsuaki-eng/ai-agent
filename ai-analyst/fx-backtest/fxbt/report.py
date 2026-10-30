@@ -64,7 +64,7 @@ def md_table(rows: list[dict] | pd.DataFrame, pct_cols: tuple[str, ...] = ()) ->
     return "\n".join(out) + "\n"
 
 
-PCT_COLS = ("勝率", "損切り率", "年率リターン", "最大DD%", "総リターン", "ランダム勝率")
+PCT_COLS = ("勝率", "ルール勝率", "損切り率", "年率リターン", "最大DD%", "総リターン", "ランダム勝率")
 
 
 def stats_rows(trades: pd.DataFrame, periods=("second", "first")) -> list[dict]:

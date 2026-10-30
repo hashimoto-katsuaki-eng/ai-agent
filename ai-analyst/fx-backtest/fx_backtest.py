@@ -33,6 +33,8 @@ def load_daily(cfg: dict, fetcher: DukascopyFetcher, pairs: list[str], today: da
         log.info("取得: %s %s〜%s", pair, start, end)
         hourly = fetcher.load_hourly(pair, start, end)
         d, info = hourly_to_daily(hourly, tz, hour)
+        # 取得最終月の月末 17:00 以降の 1 時間足は翌月 1 日ラベルの途中までの足になるため除く
+        d = d[d.index <= pd.Timestamp(end) + pd.offsets.MonthEnd(0)]
         if d.empty:
             raise RuntimeError(f"{pair} のデータが取得できませんでした")
         daily[pair] = d
