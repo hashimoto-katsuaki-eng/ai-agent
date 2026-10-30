@@ -1,0 +1,33 @@
+history_years: 2
+free_delay_days: 84
+start_date: null
+end_date: null
+cache_dir: data/cache
+output_dir: output
+rate_limit_sleep_seconds: 12.1
+max_retries: 5
+retry_backoff_seconds: 2.0
+
+screening:
+  liquidity_window: 20
+  min_average_turnover: 500000000
+  volume_window: 20
+  min_volume_ratio: 2.0
+  breakout_window: 20
+  ma_short_window: 25
+  ma_long_window: 75
+  max_ma_deviation: 0.25
+  high_52w_window: 250
+  high_52w_bonus: 0.1
+  top_n: [100, 10, 30]
+  horizons: [3, 5]
+  roundtrip_cost: 0.002
+
+portfolio:
+  initial_capital: 100000
+  cost_a: 0.002
+  cost_b: 0.005
+  max_positions_b: 3
+  tax_rate: 0.20315
+  sensitivity_costs: [0.001, 0.002, 0.005, 0.01]
+  top_n: 100
