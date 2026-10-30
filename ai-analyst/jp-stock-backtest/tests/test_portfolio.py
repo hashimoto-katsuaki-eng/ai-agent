@@ -54,3 +54,72 @@ def test_portfolio_modes_respect_cash_lots_positions_and_integer_shares() -> Non
     assert all(float(shares).is_integer() for shares in result_b["trades"]["shares"])
     assert (result_a["equity"]["equity"] >= 0).all()
     assert (result_b["equity"]["equity"] >= 0).all()
+
+
+def test_portfolio_a_buys_one_lot_per_eligible_candidate() -> None:
+    dates = pd.bdate_range("2024-01-01", periods=5)
+    panel = pd.DataFrame(
+        [
+            {
+                "date": trading_date,
+                "code": code,
+                "open": 100.0,
+                "high": 101.0,
+                "low": 99.0,
+                "close": 100.0,
+                "volume": 1000.0,
+                "upper_limit": 0.0,
+            }
+            for code in ("1000", "2000", "3000")
+            for trading_date in dates
+        ]
+    )
+    signals = pd.DataFrame(
+        {
+            "date": [dates[0]] * 3,
+            "code": ["1000", "2000", "3000"],
+            "score": [3.0, 2.0, 1.0],
+        }
+    )
+    config = {
+        "initial_capital": 100_000,
+        "max_positions_b": 3,
+        "tax_rate": 0.20315,
+        "top_n": 3,
+    }
+
+    result = simulate_portfolio(panel, signals, dates, 3, config, "A", 0.002)
+
+    assert len(result["trades"]) == 3
+    assert result["trades"]["code"].nunique() == 3
+    assert result["trades"]["shares"].tolist() == [100, 100, 100]
+
+
+def test_portfolio_uses_open_at_upper_limit_proxy() -> None:
+    dates = pd.bdate_range("2024-01-01", periods=5)
+    panel = pd.DataFrame(
+        {
+            "date": dates,
+            "code": ["1000"] * 5,
+            "open": [10.0] * 5,
+            "high": [11.0, 11.0, 11.0, 11.0, 11.0],
+            "low": [9.0] * 5,
+            "close": [10.0] * 5,
+            "volume": [100.0] * 5,
+            "upper_limit": [0.0, 1.0, 0.0, 0.0, 0.0],
+        }
+    )
+    signals = pd.DataFrame({"date": [dates[0]], "code": ["1000"], "score": [1.0]})
+    config = {
+        "initial_capital": 100_000,
+        "max_positions_b": 1,
+        "tax_rate": 0.20315,
+        "top_n": 1,
+    }
+
+    intraday_limit = simulate_portfolio(panel, signals, dates, 3, config, "A", 0.002)
+    panel.loc[panel["date"] == dates[1], "high"] = 10.0
+    opening_limit = simulate_portfolio(panel, signals, dates, 3, config, "A", 0.002)
+
+    assert len(intraday_limit["trades"]) == 1
+    assert len(opening_limit["trades"]) == 0

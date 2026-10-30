@@ -53,6 +53,39 @@ def normalize_daily_bars(frame: pd.DataFrame) -> pd.DataFrame:
     return renamed.dropna(subset=["date", "code"]).reset_index(drop=True)
 
 
+def filter_common_stock_bars(
+    bars: pd.DataFrame, master_snapshots: pd.DataFrame
+) -> tuple[pd.DataFrame, int]:
+    normalized = normalize_daily_bars(bars)
+    if normalized.empty:
+        return normalized, 0
+    if master_snapshots.empty or "Code" not in master_snapshots:
+        return normalized, normalized["code"].nunique()
+
+    master = master_snapshots.copy()
+    master["code"] = master["Code"].map(_normalize_code)
+    master = master.dropna(subset=["code"])
+    if "_snapshot_date" in master:
+        master = master.sort_values(["code", "_snapshot_date"], kind="stable")
+    latest = master.drop_duplicates("code", keep="last")
+    known_codes = set(latest["code"])
+    missing_codes = set(normalized["code"]) - known_codes
+
+    if "ProdCat" not in latest:
+        eligible_codes = known_codes
+    else:
+        product_category = latest["ProdCat"].map(_normalize_code).str.zfill(3)
+        eligible = product_category.eq("011") & latest["code"].str.endswith("0")
+        if "Mkt" in latest:
+            market = latest["Mkt"].map(_normalize_code).str.zfill(4)
+            eligible &= market.ne("0105")
+        eligible_codes = set(latest.loc[eligible, "code"])
+
+    keep_codes = eligible_codes | missing_codes
+    filtered = normalized.loc[normalized["code"].isin(keep_codes)].reset_index(drop=True)
+    return filtered, len(missing_codes)
+
+
 def _normalize_code(value: Any) -> str:
     if pd.isna(value):
         return ""
@@ -179,3 +212,35 @@ class ParquetCache:
         return pd.concat(nonempty, ignore_index=True).drop_duplicates(
             ["date", "code"], keep="last"
         )
+
+
+class MasterParquetCache:
+    """月初の上場銘柄マスタを日付ごとに保存し、既存分を再利用する。"""
+
+    def __init__(self, cache_dir: str | Path, client: Any) -> None:
+        self.cache_dir = Path(cache_dir) / "master"
+        self.client = client
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def path_for(self, snapshot_date: date) -> Path:
+        return self.cache_dir / f"{snapshot_date.isoformat()}.parquet"
+
+    def get(self, snapshot_date: date) -> pd.DataFrame:
+        path = self.path_for(snapshot_date)
+        if path.exists():
+            return pd.read_parquet(path)
+        frame = pd.DataFrame(self.client.fetch_master(snapshot_date))
+        if frame.empty and len(frame.columns) == 0:
+            frame = pd.DataFrame(columns=["Date", "Code", "ProdCat", "Mkt"])
+        frame.to_parquet(path, index=False)
+        return frame
+
+    def fetch_dates(self, snapshot_dates: list[date]) -> pd.DataFrame:
+        frames: list[pd.DataFrame] = []
+        for snapshot_date in snapshot_dates:
+            frame = self.get(snapshot_date).copy()
+            frame["_snapshot_date"] = pd.Timestamp(snapshot_date)
+            frames.append(frame)
+        if not frames:
+            return pd.DataFrame(columns=["Code", "ProdCat", "Mkt", "_snapshot_date"])
+        return pd.concat(frames, ignore_index=True)

@@ -34,7 +34,7 @@ def test_return_is_next_open_to_t_plus_n_close_and_mae_uses_entry_through_exit()
 def test_upper_limit_and_missing_open_entries_are_excluded_and_counted() -> None:
     dates = pd.bdate_range("2024-01-01", periods=5)
     rows = []
-    for code in ("1000", "2000"):
+    for code in ("1000", "2000", "3000"):
         for index, trading_date in enumerate(dates):
             rows.append(
                 {
@@ -56,12 +56,22 @@ def test_upper_limit_and_missing_open_entries_are_excluded_and_counted() -> None
     panel.loc[
         (panel["code"] == "2000") & (panel["date"] == dates[1]), "upper_limit"
     ] = 1.0
-    _, metrics, _, _ = evaluate_signals(panel, dates, [2], [3], 0.002)
+    panel.loc[
+        (panel["code"] == "3000") & (panel["date"] == dates[1]),
+        ["high", "upper_limit"],
+    ] = [10.0, 1.0]
+    evaluated, metrics, monthly, _ = evaluate_signals(panel, dates, [3], [3], 0.002)
     result = metrics.iloc[0]
 
-    assert result["candidate_count"] == 2
+    assert result["candidate_count"] == 3
     assert result["entry_excluded"] == 2
-    assert result["signal_count"] == 0
+    assert result["signal_count"] == 1
+    assert result["excess_gross_return"] == 0.0
+    assert result["excess_net_return"] < 0.0
+    assert monthly.loc[0, "excess_gross_return"] == 0.0
+    assert monthly.loc[0, "excess_net_return"] < 0.0
+    assert evaluated.loc[evaluated["code"] == "2000", "entry_status"].iloc[0] == "valid"
+    assert evaluated.loc[evaluated["code"] == "3000", "entry_status"].iloc[0] == "upper_limit"
 
 
 def test_horizon_beyond_data_end_is_excluded_and_counted() -> None:

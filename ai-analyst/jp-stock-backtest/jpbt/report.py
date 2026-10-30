@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from jpbt.evaluate import percent
+from jpbt.signals import screening_warmup_days
 
 
 def _yen(value: float) -> str:
@@ -35,7 +36,8 @@ def _signal_table(metrics: pd.DataFrame) -> str:
         "平均MAE",
         "最悪MAE",
         "ベンチマーク平均",
-        "超過リターン",
+        "粗超過リターン",
+        "コスト後超過リターン",
     ]
     lines = ["| " + " | ".join(headers) + " |", "|" + "|".join(["---"] * len(headers)) + "|"]
     for row in metrics.itertuples(index=False):
@@ -57,6 +59,7 @@ def _signal_table(metrics: pd.DataFrame) -> str:
                     percent(row.mean_mae),
                     percent(row.worst_mae),
                     percent(row.benchmark_mean_return),
+                    percent(row.excess_gross_return),
                     percent(row.excess_net_return),
                 ]
             )
@@ -66,13 +69,22 @@ def _signal_table(metrics: pd.DataFrame) -> str:
 
 
 def _monthly_signal_table(monthly: pd.DataFrame) -> str:
-    headers = ["Top N", "保有日数", "決済月", "件数", "平均リターン（コスト後）", "ベンチマーク", "超過"]
+    headers = [
+        "Top N",
+        "保有日数",
+        "決済月",
+        "件数",
+        "平均リターン（コスト後）",
+        "ベンチマーク",
+        "粗超過",
+        "コスト後超過",
+    ]
     lines = ["| " + " | ".join(headers) + " |", "|" + "|".join(["---"] * len(headers)) + "|"]
     for row in monthly.sort_values(["top_n", "horizon", "month"]).itertuples(index=False):
         lines.append(
             f"| {row.top_n} | {row.horizon}日 | {row.month} | {row.count} | "
             f"{percent(row.mean_return_net)} | {percent(row.benchmark_mean_return)} | "
-            f"{percent(row.excess_net_return)} |"
+            f"{percent(row.excess_gross_return)} | {percent(row.excess_net_return)} |"
         )
     return "\n".join(lines) if len(lines) > 2 else "該当データなし"
 
@@ -138,6 +150,7 @@ def render_summary(
     benchmark_results: Mapping[int, Mapping[str, Any]],
     sensitivity: Sequence[Mapping[str, float | int]],
     config: Mapping[str, Any],
+    missing_master_codes: int,
 ) -> str:
     """実行結果と仕様上の制約を summary.md にまとめる。"""
     lines = [
@@ -146,12 +159,13 @@ def render_summary(
         f"- データ取得期間: {start_date:%Y-%m-%d} 〜 {end_date:%Y-%m-%d}",
         f"- シグナル評価期間: {signal_start_date:%Y-%m-%d} 〜 {end_date:%Y-%m-%d}",
         f"- 初期資金: {_yen(float(config['portfolio']['initial_capital']))}",
+        f"- 上場銘柄マスタ未登録コード（データ保持）: {missing_master_codes}銘柄",
         "- 価格: J-Quants V2の調整後OHLCV。シグナルは当日終値までの情報で計算。",
         "- エントリー: t+1始値。保有日数Nはエントリー日を1日目としてt+N終値で決済。",
         "",
         "## シグナル単位の評価",
         "",
-        "勝率は往復コスト控除後リターンが正の割合です。超過リターンは、各シグナル日の流動性適格銘柄ベンチマーク平均に対するコスト後の差です。",
+        "勝率は往復コスト控除後リターンが正の割合です。粗超過リターンはコスト控除前のシグナル平均−ベンチマーク平均、コスト後超過リターンはコスト控除後のシグナル平均−同じベンチマーク平均です。",
         "",
         _signal_table(signal_metrics),
         "",
@@ -237,10 +251,12 @@ def render_summary(
             "## 制約事項",
             "",
             "- Freeプランは株価データが過去2年分・12週間遅延です。指定期間に含まれる範囲で日付指定の日足を取得します。上場廃止銘柄は上場期間中の日付を指定すれば取得できる場合がありますが、保存期間外や取得不能データは含まれません。J-Quantsの日足は東証上場銘柄が対象です。",
-            "- 52週高値判定に必要な過去250営業日のウォームアップを除外するため、シグナル評価期間はデータ取得期間より短くなります。",
+            f"- 移動平均等の条件に必要な{screening_warmup_days(config['screening'])}営業日のウォームアップを除外するため、シグナル評価期間はデータ取得期間より短くなります。52週高値は過去250営業日の高値が揃ってから判定し、それ以前はボーナスを付けません。",
+            "- 月初の営業日に取得した上場銘柄マスタをコードで統合し、最新スナップショットを使います。商品区分011かつコード末尾が0の国内普通株を対象とし、商品区分013/014等のREIT・ETFや市場区分0105のTOKYO PRO Marketは除外します。全スナップショットにないコードは除外せず、上記件数に計上します。",
+            "- 商品区分011には優先株等も含まれるため、コード末尾0（普通株）の仕様を併用します。J-Quants V2の商品区分にはETN・インフラファンドを直接示す区分がなく、国内普通株として記録された場合は個別識別できず残る可能性があります。",
             "- J-Quants V2の調整後価格は株式分割等で過去分が遡及再計算されます。現時点で指定どおり調整後価格を使いますが、完全なポイントインタイム価格ではありません。現金配当調整は含みません。",
             "- Freeプランでは前場・後場別の四本値は提供されません。単元未満株の実際の証券会社別約定タイミングは再現せず、翌営業日始値で近似しています。",
-            "- V2の上限到達フラグULは当日の高値が上限に達したかを示し、始値が上限だったかは特定できません。始値上限の保守的な代替として、翌日UL=1の銘柄を除外します。",
+            "- V2の上限到達フラグULだけでは始値が上限だったかを識別できません。翌日UL=1かつ始値=高値の場合のみエントリー不能として除外し、UL=1でも始値が高値未満なら許可します。",
             "- 税額は決済年ごとの実現損益を通算し、黒字年にのみ20.315%を課す簡易計算です。年をまたぐ損失繰越・税控除は行いません。未決済建玉の含み益には課税しません。",
             "- 約定不能・価格欠損がある場合、エントリーできない候補は除外して件数を計上します。予定決済日の価格が欠ける場合は、価格が再び得られる日まで保有を継続します。",
             "",

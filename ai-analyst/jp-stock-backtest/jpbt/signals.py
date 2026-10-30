@@ -10,6 +10,15 @@ import pandas as pd
 from jpbt.jquants import normalize_daily_bars
 
 
+def screening_warmup_days(config: Mapping[str, float | int]) -> int:
+    return max(
+        int(config["liquidity_window"]),
+        int(config["volume_window"]) + 1,
+        int(config["breakout_window"]) + 1,
+        int(config["ma_long_window"]),
+    )
+
+
 def build_feature_panel(
     bars: pd.DataFrame,
     trading_dates: Sequence[pd.Timestamp | str],

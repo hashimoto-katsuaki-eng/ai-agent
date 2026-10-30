@@ -5,13 +5,15 @@ from datetime import date
 import pandas as pd
 import yaml
 
-from backtest import main
-from tests.conftest import make_trending_bars
+from backtest import first_trading_day_each_month, main
+from jpbt.signals import screening_warmup_days
+from tests.conftest import default_screening_config, make_trending_bars
 
 
 class FakeJQuantsClient:
     def __init__(self, bars: pd.DataFrame) -> None:
         self.bars = bars
+        self.master_calls: list[date] = []
 
     def fetch_calendar(self, start_date: date, end_date: date) -> pd.DataFrame:
         del start_date, end_date
@@ -21,10 +23,34 @@ class FakeJQuantsClient:
     def fetch_daily_bars(self, trading_date: date) -> pd.DataFrame:
         return self.bars.loc[self.bars["date"].dt.date == trading_date].copy()
 
+    def fetch_master(self, snapshot_date: date) -> pd.DataFrame:
+        self.master_calls.append(snapshot_date)
+        codes = self.bars["code"].drop_duplicates().tolist()
+        return pd.DataFrame(
+            {
+                "Date": [snapshot_date.isoformat()] * len(codes),
+                "Code": codes,
+                "ProdCat": ["014" if code == "3000" else "011" for code in codes],
+                "Mkt": ["0111"] * len(codes),
+            }
+        )
+
+
+def test_warmup_uses_screening_inputs_not_52_week_window() -> None:
+    dates = pd.bdate_range("2024-01-01", periods=80).date.tolist()
+
+    assert screening_warmup_days(default_screening_config()) == 75
+    assert first_trading_day_each_month(dates) == [
+        date(2024, 1, 1),
+        date(2024, 2, 1),
+        date(2024, 3, 1),
+        date(2024, 4, 1),
+    ]
+
 
 def test_full_pipeline_writes_csv_and_markdown_without_network(tmp_path) -> None:
-    dates = pd.bdate_range("2024-01-01", periods=270)
-    bars = make_trending_bars(dates, codes=("1000", "2000"), breakout_index=260)
+    dates = pd.bdate_range("2024-01-01", periods=100)
+    bars = make_trending_bars(dates, codes=("1000", "2000", "3000"), breakout_index=90)
     config_path = tmp_path / "config.yaml"
     config = {
         "history_years": 2,
@@ -62,11 +88,12 @@ def test_full_pipeline_writes_csv_and_markdown_without_network(tmp_path) -> None
         },
     }
     config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    client = FakeJQuantsClient(bars)
 
     assert (
         main(
             ["--config", str(config_path)],
-            client=FakeJQuantsClient(bars),
+            client=client,
         )
         == 0
     )
@@ -75,7 +102,14 @@ def test_full_pipeline_writes_csv_and_markdown_without_network(tmp_path) -> None
 
     assert signal_path.exists()
     assert summary_path.exists()
-    assert len(pd.read_csv(signal_path)) > 0
+    signals = pd.read_csv(signal_path)
+    assert len(signals) > 0
+    assert "3000" not in signals["code"].astype(str).tolist()
+    assert not signals["is_52w_high"].any()
     summary = summary_path.read_text(encoding="utf-8")
     assert "資金10万円でのポートフォリオ比較" in summary
-    assert "UL" in summary
+    assert "UL=1" in summary
+    assert "粗超過リターン" in summary
+    assert "マスタ未登録コード（データ保持）: 0銘柄" in summary
+    expected_master_dates = first_trading_day_each_month(dates.date.tolist())
+    assert len(client.master_calls) == len(expected_master_dates)

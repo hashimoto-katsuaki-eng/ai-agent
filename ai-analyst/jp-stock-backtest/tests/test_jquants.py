@@ -4,7 +4,13 @@ from datetime import date
 
 import pandas as pd
 
-from jpbt.jquants import JQuantsClient, ParquetCache, normalize_daily_bars
+from jpbt.jquants import (
+    JQuantsClient,
+    MasterParquetCache,
+    ParquetCache,
+    filter_common_stock_bars,
+    normalize_daily_bars,
+)
 
 
 class FakeDailyClient:
@@ -62,6 +68,16 @@ class FakeSession:
             }
         )
         return self.responses.pop(0)
+
+
+class FakeMasterClient:
+    def __init__(self, frames: dict[date, pd.DataFrame]) -> None:
+        self.frames = frames
+        self.calls: list[date] = []
+
+    def fetch_master(self, snapshot_date: date) -> pd.DataFrame:
+        self.calls.append(snapshot_date)
+        return self.frames[snapshot_date].copy()
 
 
 def test_normalize_uses_v2_adjusted_daily_fields() -> None:
@@ -158,3 +174,47 @@ def test_parquet_cache_fetches_only_missing_dates(tmp_path) -> None:
     assert client.calls == [first, second]
     assert cache.path_for(first).exists()
     assert cache.path_for(second).exists()
+
+
+def test_master_cache_filters_etf_and_tpm_and_keeps_missing_codes(tmp_path) -> None:
+    first = date(2024, 1, 4)
+    second = date(2024, 2, 1)
+    first_master = pd.DataFrame(
+        {
+            "Code": ["10000", "13060", "20000"],
+            "ProdCat": ["011", "014", "011"],
+            "Mkt": ["0105", "0111", "0105"],
+        }
+    )
+    latest_master = pd.DataFrame(
+        {
+            "Code": ["10000", "13060", "20000"],
+            "ProdCat": ["011", "014", "011"],
+            "Mkt": ["0111", "0111", "0105"],
+        }
+    )
+    client = FakeMasterClient({first: first_master, second: latest_master})
+    cache = MasterParquetCache(tmp_path, client)
+    snapshots = cache.fetch_dates([first, second])
+    cache.fetch_dates([first])
+    bars = pd.DataFrame(
+        {
+            "date": [pd.Timestamp("2024-02-02")] * 4,
+            "code": ["10000", "13060", "20000", "30000"],
+            "open": [10.0] * 4,
+            "high": [11.0] * 4,
+            "low": [9.0] * 4,
+            "close": [10.0] * 4,
+            "volume": [100.0] * 4,
+            "turnover": [1_000_000.0] * 4,
+            "upper_limit": [0.0] * 4,
+        }
+    )
+
+    filtered, missing_count = filter_common_stock_bars(bars, snapshots)
+
+    assert client.calls == [first, second]
+    assert cache.path_for(first) == tmp_path / "master" / "2024-01-04.parquet"
+    assert cache.path_for(first).exists()
+    assert filtered["code"].tolist() == ["10000", "30000"]
+    assert missing_count == 1

@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 import numpy as np
 import pandas as pd
 
+from jpbt.entries import is_upper_limit_open
 from jpbt.signals import select_top_n
 
 
@@ -42,6 +43,7 @@ def add_forward_returns(
     date_index = {trading_date: index for index, trading_date in enumerate(dates)}
     grouped = result.groupby("code", sort=False)
     result["entry_open"] = grouped["open"].shift(-1)
+    result["entry_high"] = grouped["high"].shift(-1)
     result["entry_volume"] = grouped["volume"].shift(-1)
     result["entry_upper_limit"] = grouped["upper_limit"].shift(-1)
     result["entry_date"] = _dates_after(result["date"], date_index, dates, 1)
@@ -61,7 +63,9 @@ def add_forward_returns(
     status.loc[
         ~end_of_data
         & status.eq("valid")
-        & result["entry_upper_limit"].eq(1)
+        & is_upper_limit_open(
+            result["entry_open"], result["entry_high"], result["entry_upper_limit"]
+        )
     ] = "upper_limit"
     result["entry_status"] = status
 
@@ -143,6 +147,7 @@ def evaluate_signals(
             valid["month"] = valid[f"exit_date_{horizon}d"].dt.strftime("%Y-%m")
             daily_returns = benchmark_daily.set_index("date")["benchmark_return"]
             valid["benchmark_return"] = valid["date"].map(daily_returns)
+            valid["excess_gross_return"] = valid[return_column] - valid["benchmark_return"]
             valid["excess_net_return"] = valid["net_return"] - valid["benchmark_return"]
             benchmark_mean = (
                 float(valid["benchmark_return"].mean())
@@ -169,6 +174,11 @@ def evaluate_signals(
                     "mean_mae": float(mae.mean()) if len(mae) else float("nan"),
                     "worst_mae": float(mae.min()) if len(mae) else float("nan"),
                     "benchmark_mean_return": benchmark_mean,
+                    "excess_gross_return": (
+                        float(valid["excess_gross_return"].mean())
+                        if len(valid)
+                        else float("nan")
+                    ),
                     "excess_net_return": (
                         float(valid["excess_net_return"].mean()) if len(valid) else float("nan")
                     ),
@@ -183,6 +193,7 @@ def evaluate_signals(
                         "count": len(rows),
                         "mean_return_net": float(rows["net_return"].mean()),
                         "benchmark_mean_return": float(rows["benchmark_return"].mean()),
+                        "excess_gross_return": float(rows["excess_gross_return"].mean()),
                         "excess_net_return": float(rows["excess_net_return"].mean()),
                     }
                 )

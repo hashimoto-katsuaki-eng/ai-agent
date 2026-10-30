@@ -11,10 +11,15 @@ import pandas as pd
 import yaml
 
 from jpbt.evaluate import evaluate_signals
-from jpbt.jquants import JQuantsClient, ParquetCache
+from jpbt.jquants import (
+    JQuantsClient,
+    MasterParquetCache,
+    ParquetCache,
+    filter_common_stock_bars,
+)
 from jpbt.portfolio import simulate_equal_weight_benchmark, simulate_portfolio
 from jpbt.report import render_summary
-from jpbt.signals import build_feature_panel
+from jpbt.signals import build_feature_panel, screening_warmup_days
 
 
 def _date_value(value: Any) -> date | None:
@@ -72,6 +77,13 @@ def trading_days(calendar: pd.DataFrame) -> list[date]:
     )
 
 
+def first_trading_day_each_month(dates: list[date]) -> list[date]:
+    first_by_month: dict[tuple[int, int], date] = {}
+    for trading_date in sorted(dates):
+        first_by_month.setdefault((trading_date.year, trading_date.month), trading_date)
+    return list(first_by_month.values())
+
+
 def _write_signal_csv(signals: pd.DataFrame, output_path: Path) -> None:
     columns = [
         "date",
@@ -126,15 +138,20 @@ def run_backtest(config: dict[str, Any], client: Any) -> tuple[Path, Path]:
 
     screening = config["screening"]
     portfolio_config = config["portfolio"]
+    master_cache = MasterParquetCache(config["cache_dir"], client)
+    master_snapshots = master_cache.fetch_dates(first_trading_day_each_month(dates))
+    bars, missing_master_codes = filter_common_stock_bars(bars, master_snapshots)
+    if bars.empty:
+        raise RuntimeError("上場銘柄マスタの条件を満たす株価データがありません。")
     panel = build_feature_panel(bars, dates, screening)
     if panel.empty:
         raise RuntimeError("スクリーニング特徴量を計算できませんでした。")
-    warmup = int(screening["high_52w_window"])
-    if len(dates) <= warmup:
+    analysis_start_index = screening_warmup_days(screening)
+    if len(dates) <= analysis_start_index:
         raise RuntimeError(
-            f"データ期間が不足しています。52週判定には最低{warmup + 1}営業日必要です。"
+            "データ期間が不足しています。"
+            f"スクリーニング条件の計算には最低{analysis_start_index + 1}営業日必要です。"
         )
-    analysis_start_index = warmup
     analysis_start_date = pd.Timestamp(dates[analysis_start_index])
     panel = panel.loc[panel["date"] >= analysis_start_date].reset_index(drop=True)
     signals, signal_metrics, signal_monthly, _ = evaluate_signals(
@@ -210,6 +227,7 @@ def run_backtest(config: dict[str, Any], client: Any) -> tuple[Path, Path]:
             benchmark_results,
             sensitivity,
             config,
+            missing_master_codes,
         ),
         encoding="utf-8",
     )

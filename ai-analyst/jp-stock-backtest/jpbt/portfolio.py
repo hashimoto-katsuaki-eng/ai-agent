@@ -10,6 +10,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from jpbt.entries import is_upper_limit_open
 from jpbt.evaluate import yearly_tax
 from jpbt.signals import select_top_n
 
@@ -120,7 +121,7 @@ def simulate_portfolio(
                 continue
             if pd.isna(entry_volume) or entry_volume <= 0:
                 continue
-            if not pd.isna(upper_limit) and upper_limit == 1:
+            if is_upper_limit_open(open_price, bar["high"], upper_limit):
                 continue
 
             if mode == "B":
@@ -134,7 +135,7 @@ def simulate_portfolio(
                     continue
             else:
                 lot_cost = float(open_price) * 100 * (1 + entry_fee_rate)
-                shares = math.floor(cash / lot_cost) * 100 if lot_cost > 0 else 0
+                shares = 100 if lot_cost > 0 and lot_cost <= cash else 0
                 if shares <= 0:
                     price_skipped += 1
                     continue
