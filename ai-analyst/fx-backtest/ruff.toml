@@ -1,0 +1,7 @@
+line-length = 130
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+# 長い日本語の文字列リテラルは改行しない。OHLC の l (low) は慣用名として許容する。
+ignore = ["E501", "E741"]

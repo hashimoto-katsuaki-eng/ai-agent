@@ -1,0 +1,76 @@
+# FX 短期ブレイクアウト・バックテスト設定 (AI-239)
+# 数値の「仮値」は概算。実際の業者条件に合わせて調整すること。
+
+data:
+  source: dukascopy
+  # レート制限（429/503）が厳しいため、間隔・再試行・月次キャッシュで差分取得する（README 参照）
+  base_url: https://datafeed.dukascopy.com/datafeed
+  price_side: BID            # BID 足を使い、スプレッドは costs.spread_pips で上乗せする
+  start: "2019-01-01"        # 取得開始月（この月から）
+  end: null                  # 取得終了月。null = 実行時点で完了している直近の月まで
+  cache_dir: data            # Parquet キャッシュ（コミットしない）
+  request_interval_sec: 0.5  # リクエスト間の待機（レート制限への配慮）
+  max_retries: 8
+  backoff_base_sec: 2.0
+  timeout_sec: 30
+  day_boundary_tz: America/New_York
+  day_boundary_hour: 17      # NY 17:00 で日足を区切る（DST は tz で自動考慮）
+
+pairs: [USDJPY, EURJPY, GBPJPY, AUDJPY, EURUSD]
+conversion_pair: USDJPY      # 円以外が決済通貨のペア（EURUSD）の円換算に使う
+
+signal:
+  breakout_lookback: 20      # 前日までの N 日高値/安値（当日を含めない）
+  ma_short: 25
+  ma_long: 75
+  atr_period: 14             # Wilder 方式
+  overheat_atr_mult: 3.0     # 当日値幅 > ATR × この値 ならエントリーしない
+  enable_long: true
+  enable_short: true
+
+exit:
+  holding_days: [3, 5]       # t+1 始値エントリー、t+N 終値エグジット
+  stop_atr_mult: 2.0         # 損切り幅 = シグナル日の ATR × この値
+  take_profit_atr_mult: null # 初期版は利確なし。設定時は同一足で損切りと両方届けば損切り優先
+
+costs:
+  spread_pips:               # 仮値
+    USDJPY: 0.2
+    EURJPY: 0.5
+    GBPJPY: 1.0
+    AUDJPY: 0.7
+    EURUSD: 0.3
+  swap_pips_per_day:         # 1 日あたりの概算スワップ（pips）。仮値。期間中一定と仮定
+    USDJPY: {long: 1.5, short: -1.8}
+    EURJPY: {long: 1.0, short: -1.3}
+    GBPJPY: {long: 1.5, short: -1.8}
+    AUDJPY: {long: 0.8, short: -1.1}
+    EURUSD: {long: -0.6, short: 0.4}
+  triple_swap_weekday: 2     # 水曜（0=月）のロールオーバーは 3 日分
+
+split:
+  split_date: null           # null = 全期間の中間日。シグナル日がこの日以降なら後半（主結果）
+
+benchmark:
+  n_runs: 1000
+  seed: 42
+  alpha: 0.05                # ルールの平均損益がランダムの上位 alpha を超えたら「ランダムに勝った」
+
+portfolio:
+  initial_capital: 100000    # 円
+  risk_per_trade: 0.01       # 損切りに当たったときの損失 = 資産 × この値
+  max_leverage: 1.0          # 実効レバレッジ上限
+  max_positions: 3
+  max_positions_per_pair: 1
+  max_positions_per_currency: null  # 例: 2 にすると同一通貨・同一方向の偏りを制限
+  min_units: [1, 100, 1000]  # 先頭が主結果。残りは比較用
+  tax_rate: 0.20315
+  tax_loss_carryforward_years: 3
+
+quality:
+  spike_zscore: 8.0          # |日次対数リターン| > 直前 window 日の標準偏差 × この値 をスパイクとして記録
+  spike_window: 60
+  min_hours_per_day: 20      # 平日でこれ未満の 1 時間足しかない日を「欠損気味」として記録
+
+output:
+  dir: output
